@@ -1,0 +1,5 @@
+{
+  "name": "Website URL Scanner",
+  "description": "Een app die alle pagina's van een website screent en de URLs verzamelt zodat je ze makkelijk kunt kopiëren.",
+  "requestFramePermissions": []
+}
