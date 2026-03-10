@@ -1,27 +1,28 @@
-import express from 'express';
-import { createServer as createViteServer } from 'vite';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as cheerio from 'cheerio';
 
-const app = express();
-const PORT = 3000;
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-app.use(express.json({ limit: '50mb' }));
-
-app.all('/api/scan', async (req, res) => {
   const isPost = req.method === 'POST';
   const body = isPost ? req.body : req.query;
 
   const targetUrl = body.url as string;
   const blacklistParam = body.blacklist as string;
+  
   if (!targetUrl) {
     return res.status(400).json({ error: 'URL is required' });
   }
+  
   const blacklist = blacklistParam ? blacklistParam.split(',').map(w => w.trim().toLowerCase()).filter(Boolean) : [];
 
   const queue: string[] = body.queue || [targetUrl];
   const visited = new Set<string>(body.visited || []);
   const foundUrls = new Set<string>(body.foundUrls || [targetUrl]);
 
+  // Set headers for Server-Sent Events (SSE)
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -33,7 +34,7 @@ app.all('/api/scan', async (req, res) => {
     const baseUrl = new URL(targetUrl);
     const origin = baseUrl.origin;
 
-    const MAX_PAGES = 1500; // Increased limit since we chunk
+    const MAX_PAGES = 1500; 
 
     if (visited.size === 0) {
       res.write(`data: ${JSON.stringify({ type: 'start', message: `Start met scannen van ${origin}` })}\n\n`);
@@ -80,11 +81,9 @@ app.all('/api/scan', async (req, res) => {
 
           try {
             const resolvedUrl = new URL(href, currentUrl);
-            // Remove hash to avoid duplicates like /page#section1 and /page#section2
             resolvedUrl.hash = '';
             const cleanUrl = resolvedUrl.toString();
 
-            // Only crawl same origin, avoid duplicate URLs, and skip common non-HTML files
             const lowerCleanUrl = cleanUrl.toLowerCase();
             const isBlacklisted = blacklist.some(word => lowerCleanUrl.includes(word));
 
@@ -113,22 +112,4 @@ app.all('/api/scan', async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: 'error', message: error instanceof Error ? error.message : 'Onbekende fout' })}\n\n`);
     res.end();
   }
-});
-
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static('dist'));
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
-
-startServer();
